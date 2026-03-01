@@ -1,0 +1,22 @@
+# Rust build
+target/
+*.redb
+
+# Env files
+.env
+.env.local
+
+# Frontend
+node_modules/
+dist/
+
+# Legacy (safe to delete after flattening)
+backend/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Project docs (local only)
+project\ plan.txt

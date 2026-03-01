@@ -1,0 +1,83 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [ "ci-cd" ]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    env:
+      # TARGET_ARCH controls the build target:
+      # - arm64 (default) => aarch64-unknown-linux-gnu via cross
+      # - x86_64          => x86_64-unknown-linux-gnu via native cargo
+      TARGET_ARCH: ${{ vars.TARGET_ARCH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set build target
+        run: |
+          if [ -z "${TARGET_ARCH}" ]; then
+            TARGET_ARCH="arm64"
+          fi
+          if [ "${TARGET_ARCH}" = "arm64" ]; then
+            echo "TARGET=aarch64-unknown-linux-gnu" >> "$GITHUB_ENV"
+            echo "USE_CROSS=true" >> "$GITHUB_ENV"
+          else
+            echo "TARGET=x86_64-unknown-linux-gnu" >> "$GITHUB_ENV"
+            echo "USE_CROSS=false" >> "$GITHUB_ENV"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native OpenSSL (x86_64)
+        if: env.USE_CROSS != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Write Cross config (ARM)
+        if: env.USE_CROSS == 'true'
+        run: |
+          cat > Cross.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          # Use a newer base image so OpenSSL 3 is used at link time.
+          image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
+          pre-build = [
+            "dpkg --add-architecture arm64",
+            "apt-get update",
+            "apt-get install -y pkg-config libssl-dev:arm64"
+          ]
+          EOF
+
+      - name: Install cross (ARM)
+        if: env.USE_CROSS == 'true'
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (ARM)
+        if: env.USE_CROSS == 'true'
+        run: cross build --release --target ${{ env.TARGET }}
+
+      - name: Build (x86_64)
+        if: env.USE_CROSS != 'true'
+        run: cargo build --release --target ${{ env.TARGET }}
+
+      - name: Upload binary & restart
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+          rsync -avz --chmod=755 \
+            target/${{ env.TARGET }}/release/httptester_server \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/httptester/httptester_server
+
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "sudo systemctl restart httptester"

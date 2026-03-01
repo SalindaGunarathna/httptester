@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <meta name="api-base" content="" />
+    <title>HTTPTester — Free Webhook Testing with Push Notifications</title>
+    <meta
+      name="description"
+      content="Generate a unique webhook URL and receive HTTP requests instantly in your browser via push notifications. Zero server storage, fully private, open source."
+    />
+    <meta name="keywords" content="webhook tester, HTTP tester, webhook URL, push notifications, request inspector, API testing, webhook debugger" />
+    <link rel="canonical" href="https://httptester.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="HTTPTester — Free Webhook Testing with Push Notifications" />
+    <meta property="og:description" content="Generate a unique webhook URL and receive HTTP requests instantly via push notifications. Zero storage, fully private." />
+    <meta property="og:url" content="https://httptester.com/" />
+    <meta property="og:site_name" content="HTTPTester" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="HTTPTester — Free Webhook Testing" />
+    <meta name="twitter:description" content="Generate a unique webhook URL and receive HTTP requests instantly via push notifications." />
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="static/styles.css" />
+  </head>
+  <body>
+    <nav class="topbar">
+      <a href="/" class="topbar-brand">
+        <span>⚡ HTTPTester</span>
+      </a>
+      <div class="topbar-links">
+        <a href="#features" class="topbar-link">Features</a>
+        <a href="#how-it-works" class="topbar-link">How It Works</a>
+        <a
+          href="https://github.com/SalindaGunarathna/httptester"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="topbar-link"
+          aria-label="GitHub repository"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+      </div>
+    </nav>
+
+    <main class="app">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Real-time webhook testing</p>
+          <h1>HTTPTester</h1>
+          <p class="lede">
+            Generate a unique webhook URL and receive HTTP requests instantly in
+            your browser via push notifications. Zero server storage — your data
+            stays local.
+          </p>
+        </div>
+        <div class="hero-card">
+          <div class="label">Your Webhook URL</div>
+
+          <!-- State 1: Generate -->
+          <div id="url-initial" class="url-state">
+            <p class="url-state-text">Generate a unique URL to start receiving webhooks.</p>
+            <button id="subscribe-btn" class="btn primary">Generate URL</button>
+          </div>
+
+          <!-- State 2: Explain notifications -->
+          <div id="url-explain" class="url-state hidden">
+            <div class="url-explain-icon">🔔</div>
+            <h3>Notification Access Required</h3>
+            <p class="url-state-text">
+              HTTPTester uses browser push notifications to deliver webhooks to you in real-time — even when this tab is closed. Click <strong>Enable</strong> below, then <strong>Allow</strong> in the browser prompt.
+            </p>
+            <div class="row">
+              <button id="subscribe-confirm-btn" class="btn primary">Enable Notifications</button>
+              <button id="url-cancel-btn" class="btn ghost small">Cancel</button>
+            </div>
+          </div>
+
+          <!-- State 3: URL ready -->
+          <div id="url-ready" class="url-state hidden">
+            <div id="webhook-url" class="mono"></div>
+            <div class="row">
+              <button id="copy-url-btn" class="btn small">Copy URL</button>
+              <button id="unsubscribe-btn" class="btn-link muted" title="Unsubscribe">🗑️</button>
+            </div>
+            <span id="subscription-status" class="status"></span>
+          </div>
+        </div>
+      </header>
+
+      <section id="test-panel" class="test-panel">
+        <div class="test-head">
+          <div>
+            <h2>Test Webhook</h2>
+            <p class="muted">
+              Send sample payloads to your webhook URL and confirm delivery.
+            </p>
+          </div>
+          <button id="test-toggle-btn" class="btn ghost">Open Test <span class="chevron"></span></button>
+        </div>
+        <div id="test-body" class="test-body hidden">
+          <div class="test-grid">
+            <label class="field">
+              Payload size (bytes)
+              <input
+                id="test-size"
+                type="number"
+                min="1"
+                max="102400"
+                step="1"
+                value="1024"
+              />
+              <span class="field-help">Approximate JSON body size (max 100 KB).</span>
+            </label>
+            <label class="field">
+              Requests to send
+              <input
+                id="test-count"
+                type="number"
+                min="1"
+                max="25"
+                step="1"
+                value="1"
+              />
+              <span class="field-help">How many webhooks to send (max 25).</span>
+            </label>
+            <label class="field">
+              Delay between sends (ms)
+              <input
+                id="test-delay"
+                type="number"
+                min="0"
+                max="10000"
+                step="50"
+                value="0"
+              />
+              <span class="field-help">Pause between requests (max 10s).</span>
+            </label>
+          </div>
+          <div class="row">
+            <button id="test-run-btn" class="btn">Send Test</button>
+          </div>
+          <div id="test-output" class="mono muted test-output"></div>
+          <div id="delivery-output" class="mono muted test-output"></div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2>Requests <span id="request-count"></span></h2>
+              <p class="muted">
+                Stored locally in IndexedDB. New webhooks appear in real-time.
+              </p>
+            </div>
+            <button id="clear-btn" class="btn-link" title="Clear history">🗑️</button>
+          </div>
+          <div id="request-empty" class="empty">
+            <span class="empty-icon">📡</span>
+            No webhooks yet. Fire one at your URL.
+          </div>
+          <ul id="request-list" class="request-list"></ul>
+        </div>
+
+        <div class="card detail-card">
+          <div id="detail-empty" class="empty">
+            <span class="empty-icon">🔍</span>
+            Select a webhook to inspect headers and body.
+          </div>
+          <div id="detail-view" class="detail hidden">
+            <div class="detail-head">
+              <div>
+                <span id="detail-method" class="badge">METHOD</span>
+                <span id="detail-path" class="path mono"></span>
+              </div>
+              <div class="detail-meta">
+                <span id="detail-time" class="muted"></span>
+                <span id="detail-size" class="muted"></span>
+              </div>
+            </div>
+            <div id="detail-note" class="note hidden"></div>
+
+            <div class="detail-section">
+              <div class="section-head">
+                <button class="section-toggle">Headers <span class="chevron open"></span></button>
+                <button id="copy-headers-btn" class="btn small ghost">
+                  Copy
+                </button>
+              </div>
+              <div class="section-content">
+                <pre id="detail-headers" class="code-block"></pre>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="section-head">
+                <button class="section-toggle">Body <span class="chevron open"></span></button>
+                <div class="row">
+                  <button id="copy-body-btn" class="btn small ghost">Copy</button>
+                  <button id="copy-full-btn" class="btn small">Copy Full</button>
+                </div>
+              </div>
+              <div class="section-content">
+                <pre id="detail-body" class="code-block body-block"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="features" id="features">
+      <h2>Why HTTPTester?</h2>
+      <p>Everything you need to debug webhooks, nothing you don't.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">🔔</span>
+          <h3>Push Notifications</h3>
+          <p>Receive webhooks instantly via browser push — no polling, no open tabs required.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔒</span>
+          <h3>Zero Server Storage</h3>
+          <p>Payloads are encrypted end-to-end and stored only in your browser's IndexedDB.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">⚡</span>
+          <h3>Real-time Delivery</h3>
+          <p>Requests appear instantly in the UI the moment your webhook URL receives a hit.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔍</span>
+          <h3>Full Request Inspector</h3>
+          <p>Inspect headers, body, method, path, query strings, and content length for every request.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🧪</span>
+          <h3>Built-in Test Sender</h3>
+          <p>Send configurable test payloads directly from the UI to verify your setup works.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🌐</span>
+          <h3>Open Source</h3>
+          <p>Fully open source. Self-host your own instance or contribute on GitHub.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works" id="how-it-works">
+      <h2>How It Works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Subscribe</h3>
+          <p>Click Subscribe to grant notification permission and generate your unique webhook URL.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Send requests</h3>
+          <p>Point any service or use the built-in tester to send HTTP requests to your webhook URL.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Inspect</h3>
+          <p>Receive a push notification and inspect the full request — headers, body, and metadata — right in your browser.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="comparison">
+      <h2>How We Compare</h2>
+      <p>See how HTTPTester stacks up against other webhook testing tools.</p>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>HTTPTester</th>
+            <th>RequestBin</th>
+            <th>Webhook.site</th>
+            <th>Beeceptor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Push notifications</td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Zero server storage</td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Free &amp; unlimited</td>
+            <td><span class="check">✓</span></td>
+            <td>Limited</td>
+            <td>Limited</td>
+            <td>Limited</td>
+          </tr>
+          <tr>
+            <td>Open source</td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>No account required</td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Built-in test sender</td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="check">✓</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="open-source-cta">
+      <div class="cta-card">
+        <h2>Open Source &amp; Self-Hostable</h2>
+        <p>HTTPTester is fully open source. Star the repo, report issues, or deploy your own instance.</p>
+        <a
+          href="https://github.com/SalindaGunarathna/httptester"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span>© 2025 HTTPTester. All rights reserved.</span>
+        <div class="footer-links">
+          <a href="https://github.com/SalindaGunarathna/httptester" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How It Works</a>
+        </div>
+      </div>
+    </footer>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "HTTPTester",
+      "url": "https://httptester.com",
+      "description": "Generate a unique webhook URL and receive HTTP requests instantly in your browser via push notifications. Zero server storage.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
+    <div id="toast-container" class="toast-container"></div>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

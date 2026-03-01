@@ -1,0 +1,10 @@
+name = "httptester"
+main = "worker.js"
+compatibility_date = "2026-02-23"
+
+assets = { directory = "../frontend" }
+
+[vars]
+BACKEND_ORIGIN = "http://origin.httptester.com"
+
+routes = ["httptester.com/*"]
