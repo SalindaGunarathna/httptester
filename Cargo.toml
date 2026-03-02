@@ -22,3 +22,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.7", features = ["v4", "serde"] }
 web-push = { version = "0.9", default-features = false, features = ["hyper-client"] }
+native-tls = { version = "0.2", features = ["vendored"] }
