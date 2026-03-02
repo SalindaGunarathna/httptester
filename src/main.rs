@@ -12,14 +12,15 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{HeaderValue, StatusCode, Uri},
+    http::{HeaderValue, Request, Response, StatusCode, Uri},
     routing::{any, delete, get, get_service, post},
     Router,
 };
 use dotenvy::dotenv;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
-use tracing::{error, info};
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, Span};
 use tracing_subscriber::EnvFilter;
 
 use crate::{
@@ -93,6 +94,29 @@ async fn main() -> anyhow::Result<()> {
             .allow_headers(Any)
     };
 
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &Request<_>| {
+            let remote_addr = req
+                .extensions()
+                .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                .map(|info| info.0);
+            tracing::info_span!(
+                "http_request",
+                method = %req.method(),
+                uri = %req.uri(),
+                version = ?req.version(),
+                remote_addr = ?remote_addr
+            )
+        })
+        .on_response(|res: &Response<_>, latency: Duration, span: &Span| {
+            tracing::info!(
+                parent: span,
+                status = %res.status(),
+                latency_ms = latency.as_millis(),
+                "response"
+            );
+        });
+
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/config", get(config_handler))
@@ -105,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/hook/:uuid", any(hook))
         .route("/:uuid", any(hook))
         .layer(cors)
+        .layer(trace_layer)
         .with_state(state);
 
     if cfg.serve_frontend {
