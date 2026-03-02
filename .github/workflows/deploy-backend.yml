@@ -2,7 +2,7 @@ name: Deploy Backend
 
 on:
   push:
-    branches: [ "ci-cd" ]
+    branches: [ "main" ]
     paths:
       - "src/**"
       - "Cargo.toml"
