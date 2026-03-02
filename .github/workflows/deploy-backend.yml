@@ -49,8 +49,9 @@ jobs:
           [target.aarch64-unknown-linux-gnu]
           image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
           pre-build = [
+            "dpkg --add-architecture arm64",
             "apt-get update",
-            "apt-get install -y pkg-config libssl-dev"
+            "apt-get install -y pkg-config libssl-dev:arm64"
           ]
           EOF
 
