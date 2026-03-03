@@ -147,8 +147,8 @@ async fn worker_loop(
 
         let claimed = match claimed {
             Ok(result) => result,
-            Err(err) => {
-                error!("queue worker failed: {err}");
+            Err(_err) => {
+                error!("queue worker failed");
                 tokio::time::sleep(std::time::Duration::from_millis(IDLE_SLEEP_MS)).await;
                 continue;
             }
@@ -160,8 +160,8 @@ async fn worker_loop(
                 tokio::time::sleep(std::time::Duration::from_millis(IDLE_SLEEP_MS)).await;
                 continue;
             }
-            Err(err) => {
-                error!("queue claim error: {err}");
+            Err(_err) => {
+                error!("queue claim error");
                 tokio::time::sleep(std::time::Duration::from_millis(IDLE_SLEEP_MS)).await;
                 continue;
             }
@@ -169,8 +169,8 @@ async fn worker_loop(
 
         let record = match decode_record(&record_bytes) {
             Ok(record) => record,
-            Err(err) => {
-                error!("queue decode error: {err}");
+            Err(_err) => {
+                error!("queue decode error");
                 let _ = tokio::task::spawn_blocking({
                     let db = queue_db.clone();
                     move || drop_inflight(&db, seq)
