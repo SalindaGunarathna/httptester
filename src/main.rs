@@ -111,12 +111,13 @@ async fn main() -> anyhow::Result<()> {
         let static_dir = cfg.static_dir.clone();
         let static_dir_for_sw = cfg.static_dir.clone();
         let static_dir_for_index = cfg.static_dir.clone();
+        let static_dir_for_assets = format!("{static_dir}/static");
 
         app = app
             // Serve service worker at root scope.
             .route(
                 "/sw.js",
-                get_service(ServeFile::new(format!("{static_dir_for_sw}/sw.js"))).handle_error(
+                get_service(ServeFile::new(format!("{static_dir_for_sw}/static/sw.js"))).handle_error(
                     |err| async move {
                         (
                             StatusCode::INTERNAL_SERVER_ERROR,
@@ -139,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
             // Static assets live under /static to avoid clashing with /:uuid.
             .nest_service(
                 "/static",
-                ServeDir::new(static_dir).append_index_html_on_directories(true),
+                ServeDir::new(static_dir_for_assets).append_index_html_on_directories(true),
             );
     }
 
