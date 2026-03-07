@@ -12,6 +12,7 @@ use std::{
     time::Duration,
 };
 use tokio::time::timeout;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -50,6 +51,7 @@ pub async fn subscribe(
         delete_token: delete_token.clone(),
     };
     db_put(&state.db, &uuid, &stored)?;
+    info!(uuid = %uuid, "subscription created");
 
     let base = state.cfg.public_base_url.trim_end_matches('/');
     let url = format!("{base}/{uuid}");
@@ -72,6 +74,7 @@ pub async fn unsubscribe(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     if provided.is_empty() {
+        warn!(uuid = %uuid, "delete token missing");
         return Err(AppError::new(
             StatusCode::UNAUTHORIZED,
             "delete token required",
@@ -81,6 +84,7 @@ pub async fn unsubscribe(
     let stored = match db_get(&state.db, &uuid)? {
         Some(stored) => stored,
         None => {
+            warn!(uuid = %uuid, "subscription not found on delete");
             return Err(AppError::new(
                 StatusCode::NOT_FOUND,
                 "subscription not found",
@@ -89,6 +93,7 @@ pub async fn unsubscribe(
     };
 
     if stored.delete_token != provided {
+        warn!(uuid = %uuid, "delete token invalid");
         return Err(AppError::new(
             StatusCode::FORBIDDEN,
             "invalid delete token",
@@ -96,6 +101,7 @@ pub async fn unsubscribe(
     }
 
     let _ = db_delete(&state.db, &uuid)?;
+    info!(uuid = %uuid, "subscription deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 

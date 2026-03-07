@@ -70,7 +70,7 @@ pub async fn send_push(
         Err(WebPushError::EndpointNotValid) | Err(WebPushError::EndpointNotFound) => {
             // Remove dead subscriptions when push services report expiration.
             let _ = db_delete(db, uuid);
-            error!("subscription expired for {uuid}");
+            error!(uuid = %uuid, "subscription expired");
             Err(AppError::new(
                 StatusCode::BAD_GATEWAY,
                 "subscription expired",
@@ -80,11 +80,11 @@ pub async fn send_push(
             StatusCode::PAYLOAD_TOO_LARGE,
             "push payload too large",
         )),
-        Err(err) => {
-            error!("push failed: {err}");
+        Err(_err) => {
+            error!(uuid = %uuid, "push failed");
             Err(AppError::new(
                 StatusCode::BAD_GATEWAY,
-                format!("push failed: {err}"),
+                "push failed".to_string(),
             ))
         }
     }
