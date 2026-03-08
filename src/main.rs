@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
             // Serve service worker at root scope.
             .route(
                 "/sw.js",
-                get_service(ServeFile::new(format!("{static_dir_for_sw}/static/sw.js"))).handle_error(
+                get_service(ServeFile::new(format!("{static_dir_for_sw}/sw.js"))).handle_error(
                     |err| async move {
                         (
                             StatusCode::INTERNAL_SERVER_ERROR,

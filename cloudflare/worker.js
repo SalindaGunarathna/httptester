@@ -34,9 +34,7 @@ function proxyTo(request, origin) {
 async function serveAsset(request, env) {
   const url = new URL(request.url);
   if (url.pathname === '/sw.js') {
-    const swUrl = new URL(request.url);
-    swUrl.pathname = '/static/sw.js';
-    return env.ASSETS.fetch(new Request(swUrl.toString(), request));
+    return env.ASSETS.fetch(url.toString());
   }
 
   let response = await env.ASSETS.fetch(new Request(url.toString(), request));
