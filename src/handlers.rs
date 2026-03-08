@@ -1,17 +1,14 @@
 use axum::{
-    extract::{ConnectInfo, Path, Request, State},
-    http::{header::CONTENT_LENGTH, HeaderMap, StatusCode, Uri},
     Json,
+    extract::{ConnectInfo, Path, Request, State},
+    http::{HeaderMap, StatusCode, Uri, header::CONTENT_LENGTH},
 };
-use base64::{decode_config, encode as base64_encode, URL_SAFE, URL_SAFE_NO_PAD};
+use base64::{URL_SAFE, URL_SAFE_NO_PAD, decode_config, encode as base64_encode};
 use chrono::Utc;
 use futures_util::StreamExt;
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    time::Duration,
-};
+use std::{collections::HashMap, net::SocketAddr, time::Duration};
 use tokio::time::timeout;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -50,6 +47,11 @@ pub async fn subscribe(
         delete_token: delete_token.clone(),
     };
     db_put(&state.db, &uuid, &stored)?;
+    info!(
+        uuid = %uuid,
+        endpoint = %stored.subscription.endpoint,
+        "subscription created"
+    );
 
     let base = state.cfg.public_base_url.trim_end_matches('/');
     let url = format!("{base}/{uuid}");
@@ -72,6 +74,7 @@ pub async fn unsubscribe(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     if provided.is_empty() {
+        warn!(uuid = %uuid, "delete token missing");
         return Err(AppError::new(
             StatusCode::UNAUTHORIZED,
             "delete token required",
@@ -81,6 +84,7 @@ pub async fn unsubscribe(
     let stored = match db_get(&state.db, &uuid)? {
         Some(stored) => stored,
         None => {
+            warn!(uuid = %uuid, "subscription not found on delete");
             return Err(AppError::new(
                 StatusCode::NOT_FOUND,
                 "subscription not found",
@@ -89,13 +93,12 @@ pub async fn unsubscribe(
     };
 
     if stored.delete_token != provided {
-        return Err(AppError::new(
-            StatusCode::FORBIDDEN,
-            "invalid delete token",
-        ));
+        warn!(uuid = %uuid, "delete token invalid");
+        return Err(AppError::new(StatusCode::FORBIDDEN, "invalid delete token"));
     }
 
     let _ = db_delete(&state.db, &uuid)?;
+    info!(uuid = %uuid, "subscription deleted");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -129,7 +132,6 @@ pub async fn hook(
             "rate limit exceeded",
         ));
     }
-
 
     let mut headers_map = HashMap::new();
     for (name, value) in headers.iter() {
@@ -180,14 +182,11 @@ pub async fn hook(
 
     // Resolve a safe chunk size that fits every envelope.
     let max_total_bytes = prefix.len().saturating_add(max_body_bytes);
-    let chunk_size = resolve_chunk_size(
-        &request_id,
-        state.cfg.chunk_data_bytes,
-        max_total_bytes,
-    )?;
+    let chunk_size = resolve_chunk_size(&request_id, state.cfg.chunk_data_bytes, max_total_bytes)?;
 
     let mut stream = body.into_data_stream();
-    let deadline = tokio::time::Instant::now() + Duration::from_millis(state.cfg.webhook_read_timeout_ms);
+    let deadline =
+        tokio::time::Instant::now() + Duration::from_millis(state.cfg.webhook_read_timeout_ms);
     let mut buffer = prefix;
     let mut chunk_index = 0usize;
     let mut total_body_bytes = 0usize;
@@ -235,19 +234,23 @@ pub async fn hook(
                 return Err(AppError::new(
                     StatusCode::BAD_REQUEST,
                     "invalid request body",
-                ))
+                ));
             }
             Ok(None) => break,
             Err(_) => {
                 return Err(AppError::new(
                     StatusCode::REQUEST_TIMEOUT,
                     "request body timeout",
-                ))
+                ));
             }
         }
     }
 
-    let final_chunk = if buffer.is_empty() { Vec::new() } else { buffer };
+    let final_chunk = if buffer.is_empty() {
+        Vec::new()
+    } else {
+        buffer
+    };
     chunk_index += 1;
     let total_chunks = Some(chunk_index);
     enqueue_chunk(
@@ -283,7 +286,10 @@ async fn enqueue_chunk(
         data: base64_encode(chunk),
     };
     let envelope_bytes = serde_json::to_vec(&envelope)?;
-    state.push_queue.enqueue(uuid, envelope_bytes, send_after_ms).await?;
+    state
+        .push_queue
+        .enqueue(uuid, envelope_bytes, send_after_ms)
+        .await?;
     Ok(())
 }
 
@@ -313,9 +319,15 @@ fn validate_subscription(
         .host()
         .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, "endpoint host missing"))?;
     if !host_allowed(host, allowed_hosts) {
+        error!(
+            endpoint = %endpoint,
+            host = %host,
+            allowed_push_hosts = ?allowed_hosts,
+            "subscription endpoint host not allowed"
+        );
         return Err(AppError::new(
             StatusCode::BAD_REQUEST,
-            "endpoint host not allowed",
+            format!("endpoint host not allowed: {host}"),
         ));
     }
 
@@ -384,12 +396,7 @@ fn resolve_chunk_size(
     max_total_bytes: usize,
 ) -> Result<usize, AppError> {
     let worst_index = max_total_bytes.max(1);
-    let overhead = envelope_overhead_bytes(
-        request_id,
-        worst_index,
-        Some(worst_index),
-        true,
-    )?;
+    let overhead = envelope_overhead_bytes(request_id, worst_index, Some(worst_index), true)?;
     max_chunk_data_bytes(configured, overhead)
 }
 
@@ -423,9 +430,13 @@ fn max_chunk_data_bytes(configured: usize, overhead: usize) -> Result<usize, App
 #[cfg(test)]
 mod tests {
     use super::*;
-    use base64::{encode_config, URL_SAFE_NO_PAD};
+    use base64::{URL_SAFE_NO_PAD, encode_config};
 
-    fn make_subscription(endpoint: &str, p256dh_bytes: usize, auth_bytes: usize) -> PushSubscription {
+    fn make_subscription(
+        endpoint: &str,
+        p256dh_bytes: usize,
+        auth_bytes: usize,
+    ) -> PushSubscription {
         let p256dh = encode_config(vec![1u8; p256dh_bytes], URL_SAFE_NO_PAD);
         let auth = encode_config(vec![2u8; auth_bytes], URL_SAFE_NO_PAD);
         PushSubscription {
@@ -455,6 +466,20 @@ mod tests {
         sub.keys.p256dh = "not-base64".to_string();
         let allowed = vec!["example.com".to_string()];
         assert!(validate_subscription(&sub, &allowed).is_err());
+    }
+
+    #[test]
+    fn validate_subscription_rejects_disallowed_host_with_host_in_message() {
+        let sub = make_subscription("https://blocked.example.com/endpoint", 65, 16);
+        let allowed = vec!["example.com".to_string()];
+
+        let err = validate_subscription(&sub, &allowed).unwrap_err();
+
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            err.message,
+            "endpoint host not allowed: blocked.example.com"
+        );
     }
 
     #[test]

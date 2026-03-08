@@ -12,14 +12,15 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     extract::DefaultBodyLimit,
-    http::{HeaderValue, StatusCode, Uri},
+    http::{HeaderValue, Request, Response, StatusCode, Uri},
     routing::{any, delete, get, get_service, post},
     Router,
 };
 use dotenvy::dotenv;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
-use tracing::{error, info};
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, Span};
 use tracing_subscriber::EnvFilter;
 
 use crate::{
@@ -31,6 +32,41 @@ use crate::{
     state::AppState,
 };
 use web_push::WebPushClient;
+
+// Extract UUID from request path without logging any other request data.
+fn extract_uuid_from_path(path: &str) -> Option<String> {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut segments = trimmed.split('/');
+    let first = segments.next()?;
+    let candidate = match first {
+        "hook" => segments.next(),
+        "api" => match segments.next() {
+            Some("subscribe") => segments.next(),
+            _ => None,
+        },
+        _ => Some(first),
+    }?;
+
+    if is_uuid_like(candidate) {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
+}
+
+fn is_uuid_like(value: &str) -> bool {
+    let len = value.len();
+    if len != 12 && len != 32 && len != 36 {
+        return false;
+    }
+    value
+        .bytes()
+        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' | b'-'))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -69,8 +105,8 @@ async fn main() -> anyhow::Result<()> {
             let mut interval = tokio::time::interval(Duration::from_secs(3600));
             loop {
                 interval.tick().await;
-                if let Err(err) = cleanup_expired(&db_clone, ttl_days) {
-                    error!("cleanup failed: {err}");
+                if let Err(_err) = cleanup_expired(&db_clone, ttl_days) {
+                    error!("cleanup failed");
                 }
             }
         });
@@ -93,6 +129,18 @@ async fn main() -> anyhow::Result<()> {
             .allow_headers(Any)
     };
 
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &Request<_>| {
+            let uuid = extract_uuid_from_path(req.uri().path()).unwrap_or_else(|| "-".to_string());
+            tracing::info_span!("http_request", uuid = %uuid)
+        })
+        .on_request(|_req: &Request<_>, span: &Span| {
+            tracing::info!(parent: span, "request");
+        })
+        .on_response(|res: &Response<_>, _latency: Duration, span: &Span| {
+            tracing::info!(parent: span, status = %res.status(), "response");
+        });
+
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/config", get(config_handler))
@@ -105,6 +153,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/hook/:uuid", any(hook))
         .route("/:uuid", any(hook))
         .layer(cors)
+        .layer(trace_layer)
         .with_state(state);
 
     if cfg.serve_frontend {
