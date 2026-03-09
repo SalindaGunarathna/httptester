@@ -36,7 +36,7 @@ pub async fn subscribe(
     Json(subscription): Json<PushSubscription>,
 ) -> Result<Json<SubscribeResponse>, AppError> {
     // Validate subscription endpoint + keys before persisting.
-    validate_subscription(&subscription, &state.cfg.allowed_push_hosts)?;
+    let endpoint_host = validate_subscription(&subscription, &state.cfg.allowed_push_hosts)?;
 
     let uuid = generate_uuid(&state.db)?;
     // Delete token is required for unsubscribe; kept off the URL.
@@ -47,11 +47,7 @@ pub async fn subscribe(
         delete_token: delete_token.clone(),
     };
     db_put(&state.db, &uuid, &stored)?;
-    info!(
-        uuid = %uuid,
-        endpoint = %stored.subscription.endpoint,
-        "subscription created"
-    );
+    info!(uuid = %uuid, endpoint_host = %endpoint_host, "subscription created");
 
     let base = state.cfg.public_base_url.trim_end_matches('/');
     let url = format!("{base}/{uuid}");
@@ -297,7 +293,7 @@ async fn enqueue_chunk(
 fn validate_subscription(
     subscription: &PushSubscription,
     allowed_hosts: &[String],
-) -> Result<(), AppError> {
+) -> Result<String, AppError> {
     let endpoint = subscription.endpoint.trim();
     if endpoint.is_empty() {
         return Err(AppError::new(StatusCode::BAD_REQUEST, "endpoint required"));
@@ -320,7 +316,7 @@ fn validate_subscription(
         .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, "endpoint host missing"))?;
     if !host_allowed(host, allowed_hosts) {
         error!(
-            endpoint = %endpoint,
+            endpoint = %sanitize_endpoint_for_log(&uri),
             host = %host,
             allowed_push_hosts = ?allowed_hosts,
             "subscription endpoint host not allowed"
@@ -356,7 +352,7 @@ fn validate_subscription(
         ));
     }
 
-    Ok(())
+    Ok(host.to_string())
 }
 
 fn host_allowed(host: &str, allowed_hosts: &[String]) -> bool {
@@ -371,6 +367,27 @@ fn host_allowed(host: &str, allowed_hosts: &[String]) -> bool {
 
 fn decode_b64url(value: &str) -> Result<Vec<u8>, base64::DecodeError> {
     decode_config(value, URL_SAFE_NO_PAD).or_else(|_| decode_config(value, URL_SAFE))
+}
+
+fn sanitize_endpoint_for_log(uri: &Uri) -> String {
+    let mut sanitized = String::new();
+
+    if let Some(scheme) = uri.scheme_str() {
+        sanitized.push_str(scheme);
+        sanitized.push_str("://");
+    }
+
+    if let Some(authority) = uri.authority() {
+        sanitized.push_str(authority.as_str());
+    }
+
+    sanitized.push_str(uri.path());
+
+    if uri.query().is_some() {
+        sanitized.push_str("?<redacted>");
+    }
+
+    sanitized
 }
 
 fn envelope_overhead_bytes(
@@ -450,7 +467,10 @@ mod tests {
     fn validate_subscription_accepts_valid() {
         let sub = make_subscription("https://example.com/endpoint", 65, 16);
         let allowed = vec!["example.com".to_string()];
-        assert!(validate_subscription(&sub, &allowed).is_ok());
+        assert_eq!(
+            validate_subscription(&sub, &allowed).unwrap(),
+            "example.com"
+        );
     }
 
     #[test]
@@ -487,6 +507,18 @@ mod tests {
         let sub = make_subscription("https://example.com/endpoint", 64, 15);
         let allowed = vec!["example.com".to_string()];
         assert!(validate_subscription(&sub, &allowed).is_err());
+    }
+
+    #[test]
+    fn sanitize_endpoint_for_log_redacts_query_string() {
+        let uri: Uri = "https://notify.windows.com/w/?token=super-secret-token"
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            sanitize_endpoint_for_log(&uri),
+            "https://notify.windows.com/w/?<redacted>"
+        );
     }
 
     #[test]
